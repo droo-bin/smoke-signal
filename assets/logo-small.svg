@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>Smoke Signal</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF9A4D"/><stop offset="1" stop-color="#C2410C"/></linearGradient>
+    <radialGradient id="shine" cx=".25" cy=".15" r=".9"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset=".6" stop-color="#fff" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="116" fill="url(#shine)"/>
+  
+  <path d="M104 256 L107 247 L110 239 L114 231 L117 223 L120 215 L123 208 L126 201 L129 195 L132 189 L136 184 L139 180 L142 176 L145 173 L148 171 L152 170 L155 170 L158 171 L161 172 L164 174 L167 177 L170 181 L174 186 L177 191 L180 197 L183 204 L186 211 L190 218 L193 226 L196 234 L199 243 L202 251 L205 260 L208 268 L212 277 L215 285 L218 293 L221 300 L224 307 L228 314 L231 320 L234 325 L237 330 L240 334 L243 337 L246 340 L250 341 L253 342 L256 342 L259 341 L262 339 L266 336 L269 333 L272 329 L275 324 L278 318 L281 312 L284 305 L288 298 L291 291 L294 283 L297 274 L300 266 L304 257 L307 242 L310 227 L313 212 L316 200 L319 189 L322 180 L326 174 L329 171 L332 170 L335 172 L338 177 L342 185 L345 195 L348 207 L351 221 L354 236 L357 251 L360 267 L364 282 L367 297 L370 310 L373 321 L376 330 L380 337 L383 341 L386 342 L389 340 L392 336 L395 329 L398 319 L402 308 L405 294 L408 280" fill="none" stroke="#FFFFFF" stroke-width="52" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

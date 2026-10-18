@@ -1,4 +1,6 @@
-# Smoke Signal
+<p align="center"><img src="assets/logo.svg" width="112" height="112" alt=""></p>
+
+<h1 align="center">Smoke Signal</h1>
 
 A modem in your browser. It turns messages, photos and files into sound that any radio can carry, and turns that sound back into messages. One offline HTML file, no installs, no servers.
 
@@ -55,7 +57,11 @@ make -C /tmp/direwolf/build atest gen_packets
   git tag v1.0.0 && git push origin v1.0.0
   ```
 
-One-time setup: in the repository's **Settings → Pages**, set **Source** to **GitHub Actions**.
+One-time setup: in the repository's **Settings → Pages**, set **Source** to **GitHub Actions**. For the link preview, upload `assets/social-preview.png` under **Settings → General → Social preview**.
+
+## Logo and icons
+
+`assets/` holds the logo (`logo.svg`, and a bolder `logo-small.svg` for tiny sizes), PNG icons at 512, 192 and 32 px, the home-screen icon and the GitHub social preview. The mark is a continuous-phase FSK wave: a slow tone switching to a faster one, which is what the modem actually sends. `python3 assets/make_icons.py` redraws them all. The build inlines the favicon and home-screen icon into the page, so it still works as a single offline file.
 
 ## Before you transmit
 
