@@ -1,0 +1,11 @@
+{
+  "name": "smoke-signal",
+  "version": "1.0.0",
+  "description": "A packet radio modem in one offline web page.",
+  "license": "Apache-2.0",
+  "private": true,
+  "scripts": {
+    "build": "python3 build.py",
+    "test": "python3 build.py && node --test test/modem.test.js && python3 -m unittest discover -s test -p \"test_*.py\""
+  }
+}

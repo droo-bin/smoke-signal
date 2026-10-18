@@ -1,0 +1,18 @@
+# Build output (CI rebuilds it; run `python3 build.py` locally)
+dist/
+
+# Direwolf, built locally for the interop tests
+direwolf/
+
+# Test and tooling output
+__pycache__/
+*.pyc
+*.wav
+node_modules/
+*.zip
+
+# OS and editor clutter
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

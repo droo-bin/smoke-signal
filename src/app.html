@@ -1,0 +1,1329 @@
+<!doctype html>
+<!--
+  Smoke Signal: a packet radio modem in one offline web page.
+  Copyright 2026 The Smoke Signal contributors
+  SPDX-License-Identifier: Apache-2.0  (https://www.apache.org/licenses/LICENSE-2.0)
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob: data:; style-src 'unsafe-inline'; img-src blob: data:; media-src blob:; form-action 'none'; base-uri 'none'">
+<title>Smoke Signal</title>
+<style>
+:root{
+  --bg:#ECEFEA;--surface:#FBFCFA;--sunk:#E4E9E3;--ink:#121A17;--muted:#56625D;--line:#D2DAD4;
+  --accent:#C2410C;--accent-ink:#FFFFFF;--soft:#FBE4D6;--good:#1F7A4C;--bad:#B42318;--warn-bg:#F8EEDC;--warn:#7A4E0E;
+  --glow:rgba(194,65,12,.10);--grid:rgba(18,26,23,.035);--tx:#E5483B;--rx:#1F9D63;
+  --wf-bg:#090D0C;--r:12px;--bar:rgba(236,239,234,.85);--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --body:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#090D0C;--surface:#111816;--sunk:#18211E;--ink:#E9EFEC;--muted:#93A39B;--line:#22302B;
+  --accent:#FF8A3D;--accent-ink:#1A0B02;--soft:#2E1D12;--good:#3DDC97;--bad:#FF7A6E;--warn-bg:#241C10;--warn:#F2C27A;
+  --glow:rgba(255,138,61,.10);--grid:rgba(233,239,236,.03);--tx:#FF5A4E;--rx:#3DDC97;--bar:rgba(9,13,12,.82);color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#090D0C;--surface:#111816;--sunk:#18211E;--ink:#E9EFEC;--muted:#93A39B;--line:#22302B;
+  --accent:#FF8A3D;--accent-ink:#1A0B02;--soft:#2E1D12;--good:#3DDC97;--bad:#FF7A6E;--warn-bg:#241C10;--warn:#F2C27A;
+  --glow:rgba(255,138,61,.10);--grid:rgba(233,239,236,.03);--tx:#FF5A4E;--rx:#3DDC97;--bar:rgba(9,13,12,.82);color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 var(--body)}
+body{background:
+  radial-gradient(1200px 500px at 15% -10%,var(--glow),transparent 60%),
+  linear-gradient(var(--grid) 1px,transparent 1px) 0 0/100% 28px,
+  linear-gradient(90deg,var(--grid) 1px,transparent 1px) 0 0/28px 100%,
+  var(--bg);min-height:100vh}
+main{max-width:760px;margin:0 auto;padding:18px max(16px,env(safe-area-inset-left)) 24px}
+.grid,.col{display:flex;flex-direction:column}
+@media (min-width:1000px){
+  main{max-width:1440px;padding:22px 28px 24px}
+  .grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 20px}
+  /* Received matches the Send column's height and scrolls inside, so new messages never lengthen the page. */
+  .grid{align-items:stretch}
+  .col>section:last-child{flex:1;display:flex;flex-direction:column}
+  .log-box{position:relative;flex:1;min-height:260px}
+  .log-box>.log{position:absolute;inset:0;max-height:none;overflow:auto;padding-right:4px}
+}
+/* ---------- app bar ---------- */
+.bar{position:sticky;top:0;z-index:15;background:var(--bar);backdrop-filter:blur(12px) saturate(1.2);-webkit-backdrop-filter:blur(12px) saturate(1.2);border-bottom:1px solid var(--line)}
+.bar-in{max-width:1440px;margin:0 auto;display:flex;align-items:center;gap:10px 18px;padding:10px max(16px,env(safe-area-inset-left));min-height:60px}
+@media (min-width:1000px){.bar-in{padding:10px 28px}}
+.brand{display:flex;align-items:center;gap:10px;min-width:0;margin-right:auto}
+.brand svg{flex:none;filter:drop-shadow(0 3px 10px var(--glow))}
+.brand h1{font-size:18px;line-height:1.1;margin:0;letter-spacing:-.01em;font-weight:800;white-space:nowrap}
+.brand .kicker{display:block;font:600 10px/1.3 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+.bar-station{display:flex;align-items:center;gap:10px}
+.callfield{display:flex;align-items:center;height:40px;border-radius:10px;background:var(--sunk);border:1.5px solid transparent;padding-left:12px;transition:border-color .15s,box-shadow .15s}
+.callfield:focus-within{border-color:var(--accent);background:var(--surface);box-shadow:0 0 0 3px var(--soft)}
+.callfield.missing{border-color:var(--accent)}
+.callfield>span{font:700 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+.bar input.call[type=text]{width:118px;height:100%;background:transparent;border:0;box-shadow:none;padding:0 12px 0 10px;font-size:16px;font-weight:700}
+.bar input.call[type=text]:focus{box-shadow:none;background:transparent}
+.seg{display:inline-flex;height:40px;padding:3px;border-radius:10px;background:var(--sunk);gap:2px}
+.seg button,.seg button:not(.ghost):not(:disabled){min-height:0;height:34px;padding:0 12px;border-radius:7px;background:transparent;color:var(--muted);font:700 13px var(--mono);box-shadow:none}
+.seg button small{font:600 10px var(--body);margin-left:5px;opacity:.8}
+.seg button[aria-pressed=true],.seg button[aria-pressed=true]:not(.ghost):not(:disabled){background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.18)}
+.seg-label{font:700 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);align-self:center;padding:0 6px 0 8px}
+.bar-right{display:flex;align-items:center;gap:8px}
+.lights{display:flex;gap:6px;align-items:center}
+.light{display:inline-flex;align-items:center;gap:6px;font:700 11px var(--mono);letter-spacing:.12em;height:30px;padding:0 10px;border-radius:999px;
+  border:1px solid var(--line);color:var(--muted)}
+.light i{width:8px;height:8px;border-radius:50%;background:var(--line)}
+.light.on.rx{color:var(--ink)}.light.on.rx i{background:var(--rx);box-shadow:0 0 10px var(--rx)}
+.light.busy.rx i{animation:blink .4s steps(2) infinite}
+.light.on.tx{color:var(--ink);border-color:var(--tx)}.light.on.tx i{background:var(--tx);box-shadow:0 0 12px var(--tx)}
+@keyframes blink{50%{opacity:.25}}
+.bar #listen{min-height:40px;height:40px;min-width:162px;justify-content:center;padding:0 16px 0 12px;font-size:15px;display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+.bar #listen svg{flex:none}
+.icon-btn,.icon-btn:not(.ghost):not(:disabled){width:40px;height:40px;min-height:0;padding:0;display:inline-grid;place-items:center;border-radius:10px;background:transparent;color:var(--muted);box-shadow:none}
+.icon-btn:hover{background:var(--sunk);color:var(--ink)}
+.bar-sep{width:1px;height:24px;background:var(--line)}
+@media (max-width:1120px){
+  .bar-in{flex-wrap:wrap}
+  .bar-station{order:3;flex-basis:100%;justify-content:space-between}
+  .callfield{flex:1;min-width:0}.bar input.call[type=text]{width:100%}
+  .bar-sep,.seg-label{display:none}
+}
+@media (max-width:480px){
+  .bar-in{gap:10px 6px}.brand{gap:8px}.brand h1{font-size:16px}.brand .kicker{display:none}.brand svg{width:30px;height:30px}
+  .light{font-size:10px;gap:5px;padding:0 8px;letter-spacing:.08em}.light i{width:7px;height:7px}.lights{gap:4px}
+  .bar #listen .lbl{display:none}.bar #listen{min-width:0;padding:0 11px}
+  .icon-btn,.icon-btn:not(.ghost):not(:disabled){width:34px}
+  #theme,#open-about,.bar-sep{display:none}
+  .seg button small{display:none}
+  .opt-every{margin-left:28px}
+}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:0 20px 20px;margin-bottom:18px;
+  box-shadow:0 1px 0 rgba(255,255,255,.03) inset,0 10px 30px -18px rgba(0,0,0,.35)}
+.card>.field{flex:none}
+.panel-head{display:flex;align-items:center;gap:10px 14px;flex-wrap:wrap;min-height:54px;margin:0 -20px 18px;padding:10px 20px;border-bottom:1px solid var(--line)}
+.panel-head h2{font:700 12px var(--mono);margin:0;text-transform:uppercase;letter-spacing:.16em;color:var(--ink);display:flex;align-items:center;gap:9px;margin-right:auto}
+.panel-head h2 svg{color:var(--accent)}
+.panel-head .tabs{margin:0}
+.chip[hidden]{display:none}
+.chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:999px;background:var(--sunk);font:600 12px var(--mono);color:var(--muted);white-space:nowrap}
+.chip.live{color:var(--ink)}.chip.live::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--rx);box-shadow:0 0 8px var(--rx)}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+.field{display:flex;flex-direction:column;gap:6px;flex:1;min-width:140px}
+label,.label{font-size:14px;font-weight:600}
+.hint{font-size:14px;color:var(--muted)}
+input[type=text],textarea,select{font:16px var(--body);color:var(--ink);background:var(--sunk);border:1.5px solid transparent;border-radius:10px;padding:10px 12px;width:100%}
+input[type=text]:focus,textarea:focus,select:focus,input[type=text]:focus-visible,textarea:focus-visible,select:focus-visible{outline:none;border-color:var(--accent);background:var(--surface);box-shadow:0 0 0 3px var(--soft)}
+input.call{font-family:var(--mono);text-transform:uppercase;letter-spacing:.04em}
+input.call::placeholder{text-transform:none;font-family:var(--body);letter-spacing:0}
+textarea{min-height:96px;resize:vertical}
+input[type=range]{width:100%;accent-color:var(--accent)}
+button{font:600 16px var(--body);border:0;border-radius:999px;padding:11px 22px;min-height:46px;cursor:pointer;background:var(--accent);color:var(--accent-ink);
+  transition:transform .08s,box-shadow .15s}
+button:not(.ghost):not(:disabled){box-shadow:0 6px 20px -6px var(--accent)}
+button:not(:disabled):active{transform:translateY(1px)}
+.tabs button,.tabs button:not(.ghost):not(:disabled){box-shadow:none}
+#listen.on{background:var(--rx);color:#062014;box-shadow:0 6px 20px -6px var(--rx)}
+button.ghost{background:var(--sunk);color:var(--ink)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button:focus-visible,a:focus-visible,input[type=checkbox]:focus-visible,input[type=range]:focus-visible,label.drop:focus-within{outline:3px solid var(--accent);outline-offset:2px}
+.tabs{display:inline-flex;background:var(--sunk);border-radius:999px;padding:4px;margin-bottom:12px}
+.tabs button{background:transparent;color:var(--muted);min-height:38px;padding:7px 16px}
+.tabs button[aria-selected=true]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;border:2px dashed var(--line);border-radius:12px;padding:22px;text-align:center;cursor:pointer}
+.drop.over{border-color:var(--accent);background:var(--soft)}
+.file-info{display:grid;grid-template-columns:96px minmax(0,1fr);gap:14px;align-items:start;margin-top:12px}
+.file-info .thumb{width:96px;height:96px;border-radius:10px;background:var(--sunk) center/contain no-repeat;display:grid;place-items:center;font:600 13px var(--mono);color:var(--muted);overflow:hidden}
+.file-info .thumb img{width:100%;height:100%;object-fit:contain;image-rendering:pixelated}
+.shrink{margin-top:12px;padding:12px;border-radius:12px;background:var(--sunk)}
+.shrink[hidden]{display:none}
+.check{display:flex;gap:8px;align-items:center;font-weight:600}
+.check input{width:20px;height:20px;accent-color:var(--accent)}
+.plan{margin:14px 0 12px;padding:10px 14px;border-radius:10px;background:var(--soft);font-size:15px}
+.opts{border:1px solid var(--line);border-radius:10px;margin:0 0 16px}
+.opt{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:10px 12px;min-height:52px}
+.opt+.opt{border-top:1px solid var(--line)}
+.opt-every{display:inline-flex;align-items:center;gap:8px;font-size:14px;color:var(--muted);margin-left:auto}
+.opt-every label{font-weight:400}
+.opt-every select{width:auto;padding:6px 10px;font-size:14px}
+.opt-every select:disabled{opacity:.5}
+.to-field{max-width:340px;margin-bottom:14px}
+.panel-head .show select{width:auto;min-width:130px;padding:6px 10px;font-size:14px}
+.panel-head .tabs button{min-height:32px;padding:4px 14px;font-size:15px}
+.count{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 6px;border-radius:11px;background:var(--line);color:var(--ink);font-size:12px;margin-left:4px}
+.log li.to-me{border-color:var(--accent)}
+.log li.flag{box-shadow:inset 4px 0 0 var(--accent)}
+.log .to{font-size:13px;color:var(--muted)}
+.log .to b{color:var(--accent)}
+.stations li{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:10px 12px}
+.stations .st-info{flex:1;min-width:150px}
+.log li[hidden]{display:none}
+.st-call{font:600 16px var(--mono)}
+.st-call .badge{font:600 12px var(--body);margin-left:8px;color:var(--accent)}
+.sig{width:70px;height:8px;border-radius:4px;background:var(--sunk);overflow:hidden;justify-self:end}
+.sig i{display:block;height:100%;background:var(--good)}
+.st-actions{display:flex;gap:6px;flex-wrap:wrap}
+button.small{min-height:36px;padding:6px 14px;font-size:14px}
+button.small[aria-pressed=true]{background:var(--ink);color:var(--surface)}
+.queue-wrap{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.queue-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.queue-head h3{font-size:15px;margin:0}
+.queue li{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px}
+.queue .q-main{flex:1;min-width:180px}
+.queue .q-what{font-weight:600;font-size:15px;word-break:break-word}
+.queue .q-actions{display:flex;gap:6px}
+.queue li.q-acked .q-status{color:var(--good);font-weight:600}
+.queue li.q-noreply .q-status{color:var(--bad);font-weight:600}
+.queue li.q-sending{border-color:var(--accent)}
+.ptt-cue{position:fixed;left:50%;bottom:max(20px,env(safe-area-inset-bottom));transform:translateX(-50%);z-index:20;display:flex;gap:14px;align-items:center;
+  min-width:min(92vw,420px);padding:16px 22px;border-radius:18px;background:var(--ink);color:var(--surface);box-shadow:0 10px 40px rgba(0,0,0,.35)}
+.ptt-cue[hidden]{display:none}
+.ptt-cue strong{display:block;font-size:20px;line-height:1.2}
+.ptt-cue span{font-size:15px;opacity:.85}
+.ptt-dot{flex:none;width:22px;height:22px;border-radius:50%;background:#E5483B;box-shadow:0 0 0 0 rgba(229,72,59,.6);animation:ptt 1s infinite}
+.ptt-cue.release .ptt-dot{background:#7FD19F;animation:none}
+@keyframes ptt{0%{box-shadow:0 0 0 0 rgba(229,72,59,.6)}70%{box-shadow:0 0 0 14px rgba(229,72,59,0)}100%{box-shadow:0 0 0 0 rgba(229,72,59,0)}}
+@media (prefers-reduced-motion:reduce){.ptt-dot{animation:none}}
+.log .times{font-size:13px;color:var(--muted)}
+.ask{margin-top:8px}
+.queue li.q-earlier .q-status{font-style:italic}
+.more-form{flex-basis:100%;display:flex;flex-direction:column;gap:10px;padding:12px;border-radius:10px;background:var(--sunk);margin-top:4px}
+.more-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.more-row label,.more-row .label{font-size:14px;font-weight:600;min-width:150px}
+.more-row input[type=number]{width:84px;font:16px var(--body);color:var(--ink);background:var(--surface);border:1.5px solid var(--line);border-radius:8px;padding:7px 9px}
+.more-row .hint{flex-basis:100%;font-size:13px}
+.plan.bad,.plan.warn{background:var(--warn-bg);color:var(--warn)}
+.wf-wrap{position:relative;border-radius:12px;overflow:hidden;background:var(--wf-bg);border:1px solid var(--line)}
+.wf-mark{position:absolute;top:6px;font:700 10px var(--mono);letter-spacing:.12em;color:#C9D6D0;background:rgba(9,13,12,.6);padding:2px 6px;border-radius:4px;transform:translateX(-50%);pointer-events:none}
+canvas#wf{display:block;width:100%;height:150px}
+@media (min-width:1000px){canvas#wf{height:120px}}
+.wf-scale{position:absolute;left:0;right:0;bottom:0;padding:2px 8px;height:18px;font:11px var(--mono);color:#9fb1a9;pointer-events:none}
+.wf-scale span{position:absolute;bottom:2px}
+.wf-scale span:nth-child(1){left:8px}.wf-scale span:nth-child(2){left:40%;transform:translateX(-50%)}
+.wf-scale span:nth-child(3){left:73.3%;transform:translateX(-50%)}.wf-scale span:nth-child(4){right:8px}
+.meter{height:10px;border-radius:3px;background:var(--sunk);overflow:hidden;margin-top:10px;
+  -webkit-mask:repeating-linear-gradient(90deg,#000 0 7px,transparent 7px 9px);mask:repeating-linear-gradient(90deg,#000 0 7px,transparent 7px 9px)}
+.meter i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--rx) 0 60%,#F2C94C 75%,var(--tx) 95%);background-size:var(--mw,100%) 100%;transition:width .1s}
+.status{font-size:14px;color:var(--muted);margin-top:8px;min-height:21px}
+.log{display:flex;flex-direction:column;gap:10px;margin:0;padding:0;list-style:none;max-height:70vh;overflow:auto}
+.log li{border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.log .meta{display:flex;gap:10px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-bottom:4px}
+.log .from{font:600 13px var(--mono);color:var(--ink)}
+.log .body{white-space:pre-wrap;word-break:break-word}
+.log .body.long{max-height:9.5em;overflow:auto}
+.log img{max-width:100%;border-radius:8px;display:block;margin:6px 0;image-rendering:pixelated;min-width:160px}
+.prog{height:10px;border-radius:5px;background:var(--sunk);overflow:hidden;margin:8px 0 4px}
+.prog i{display:block;height:100%;background:var(--accent)}
+.done-badge{color:var(--good);font-weight:600}
+.empty{color:var(--muted);font-size:15px}
+.foot{max-width:1440px;margin:0 auto;padding:4px max(16px,env(safe-area-inset-left)) 40px;display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;font-size:13px;color:var(--muted)}
+@media (min-width:1000px){.foot{padding:4px 28px 28px}}
+.foot strong{color:var(--warn)}
+.foot p{margin:0;flex:1;min-width:260px}
+.linkish,.linkish:not(.ghost):not(:disabled){background:none;box-shadow:none;color:var(--accent);padding:0;min-height:0;font:600 13px var(--body);text-decoration:underline;text-underline-offset:3px;border-radius:2px}
+/* ---------- dialogs ---------- */
+dialog.sheet{border:1px solid var(--line);border-radius:16px;padding:0;background:var(--surface);color:var(--ink);width:min(560px,calc(100vw - 24px));max-height:calc(100vh - 48px);
+  box-shadow:0 30px 80px -20px rgba(0,0,0,.5)}
+dialog.sheet::backdrop{background:rgba(5,8,7,.55);backdrop-filter:blur(3px)}
+.sheet-head{display:flex;align-items:center;gap:10px;padding:14px 14px 14px 22px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface)}
+.sheet-head h2{font:700 17px var(--body);margin:0;margin-right:auto}
+.sheet-body{padding:20px 22px 22px;display:flex;flex-direction:column;gap:22px}
+.sheet-body p{margin:0}
+.sheet-body h3{font:700 12px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 -12px}
+.sheet .legal{font-size:14px;color:var(--warn);background:var(--warn-bg);border-radius:12px;padding:12px 14px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:14px}
+.kv dt{font:600 12px var(--mono);color:var(--muted);padding-top:2px}.kv dd{margin:0}
+/* ---------- waterfall idle state ---------- */
+.wf-idle{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;padding:16px;
+  background:radial-gradient(ellipse at center,rgba(9,13,12,.55),rgba(9,13,12,.85));color:#C9D6D0;font-size:14px}
+.wf-idle[hidden]{display:none}
+.wf-idle button{min-height:38px;padding:6px 16px;font-size:15px}
+.stats{font:13px/1.6 var(--mono);color:var(--muted);margin-top:10px}
+a{color:var(--accent)}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+@media (max-width:520px){.card .row>.field{max-width:none!important;flex-basis:100%}.card{padding:0 16px 16px}.panel-head{margin:0 -16px 16px;padding:10px 16px}.file-info{grid-template-columns:72px minmax(0,1fr)}.file-info .thumb{width:72px;height:72px}}
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="bar-in">
+    <div class="brand">
+      <svg width="34" height="34" viewBox="0 0 36 36" aria-hidden="true"><rect width="36" height="36" rx="10" fill="var(--accent)"/><path d="M6 22c3 0 3-8 6-8s3 8 6 8 3-8 6-8 3 8 6 8" fill="none" stroke="var(--accent-ink)" stroke-width="2.6" stroke-linecap="round"/></svg>
+      <div><h1>Smoke Signal</h1><span class="kicker">Packet radio modem</span></div>
+    </div>
+    <div class="bar-station">
+      <label class="callfield" id="callfield" for="call"><span>Callsign</span><input type="text" id="call" class="call" autocomplete="off" autocapitalize="characters" placeholder="M7ABC" spellcheck="false" aria-describedby="call-hint"></label>
+      <span class="vh" id="call-hint">Sent with every packet. Needed before you can transmit.</span>
+      <div class="seg" role="group" aria-label="Sending speed">
+        <span class="seg-label" aria-hidden="true">Baud</span>
+        <button type="button" data-baud="1200" aria-pressed="true" title="1200 baud: standard, for radios and cables">1200</button>
+        <button type="button" data-baud="300" aria-pressed="false" title="300 baud: four times slower, but survives echo. Use it through a speaker and microphone, or on weak signals.">300<small>echo-proof</small></button>
+      </div>
+    </div>
+    <div class="bar-right">
+      <div class="lights" role="group" aria-label="Radio status">
+        <span class="light rx" id="ind-rx" title="Receiving"><i></i>RX</span>
+        <span class="light tx" id="ind-tx" title="Transmitting"><i></i>TX</span>
+      </div>
+      <button type="button" id="listen" aria-pressed="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M2 12h2M6 8v8M10 5v14M14 8v8M18 10v4M22 12h0"/></svg><span class="lbl">Listen</span></button>
+      <span class="bar-sep" aria-hidden="true"></span>
+      <button type="button" class="icon-btn" id="open-settings" aria-label="Radio settings" title="Radio settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg></button>
+      <button type="button" class="icon-btn" id="theme" aria-label="Theme: match my device" title="Theme: match my device"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg></button>
+      <button type="button" class="icon-btn" id="open-about" aria-label="About and licensing" title="About and licensing"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14"/><path d="M12 17.5h.01"/></svg></button>
+    </div>
+  </div>
+</header>
+<main>
+<div class="grid">
+<div class="col">
+
+
+<section class="card" aria-labelledby="send-h">
+  <div class="panel-head"><h2 id="send-h">Send</h2></div>
+  <div class="field to-field"><label for="to">To</label>
+    <input type="text" id="to" class="call" placeholder="Everyone" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-describedby="to-hint">
+    <span class="hint" id="to-hint">Leave blank to send to everyone, or enter one callsign.</span></div>
+  <div class="tabs" role="tablist" aria-label="What to send">
+    <button type="button" role="tab" id="tab-text" aria-selected="true" aria-controls="pane-text">Message</button>
+    <button type="button" role="tab" id="tab-file" aria-selected="false" aria-controls="pane-file">File or photo</button>
+  </div>
+  <div id="pane-text" role="tabpanel" aria-labelledby="tab-text">
+    <label for="msg" class="vh">Message</label>
+    <textarea id="msg" placeholder="e.g. Water and phone charging at St Mary's church hall until 5pm."></textarea>
+  </div>
+  <div id="pane-file" role="tabpanel" aria-labelledby="tab-file" hidden>
+    <label class="drop" id="drop" for="file">
+      <strong>Choose a file or photo</strong>
+      <span class="hint">or drop it here. Photos can be shrunk to send quickly.</span>
+      <input type="file" id="file" class="vh">
+    </label>
+    <div class="file-info" id="file-info" hidden>
+      <div class="thumb" id="thumb" aria-hidden="true"></div>
+      <div>
+        <div class="label" id="file-name"></div>
+        <div class="hint" id="file-size"></div>
+        <div class="shrink" id="shrink" hidden>
+          <label class="check"><input type="checkbox" id="shrink-on" checked> Shrink this photo for radio</label>
+          <div class="row" style="margin-top:10px">
+            <div class="field"><label for="dim">Size</label>
+              <select id="dim"><option value="120">Tiny, 120 px</option><option value="200" selected>Small, 200 px</option><option value="320">Medium, 320 px</option><option value="480">Large, 480 px</option></select></div>
+            <div class="field"><label for="quality">Quality <span class="hint" id="quality-v">40%</span></label><input type="range" id="quality" min="10" max="90" step="5" value="40"></div>
+          </div>
+          <label class="check" style="margin-top:10px"><input type="checkbox" id="grey"> Black and white (smaller)</label>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="plan" id="plan" aria-live="polite">Type a message to see how long it takes to send.</div>
+  <div class="opts">
+    <div class="opt"><label class="check"><input type="checkbox" id="repeat"> Keep repeating until I press Stop</label>
+      <span class="opt-every"><label for="every">pausing</label>
+      <select id="every" disabled><option value="5">5 seconds</option><option value="15" selected>15 seconds</option><option value="30">30 seconds</option><option value="60">1 minute</option><option value="300">5 minutes</option></select>
+      <span>between each</span></span></div>
+    <div class="opt"><label class="check"><input type="checkbox" id="lbt" checked> Wait for a clear channel before sending</label></div>
+  </div>
+  <div class="row">
+    <button type="button" id="send" disabled>Send</button>
+    <button type="button" class="ghost" id="stop" hidden>Stop everything</button>
+  </div>
+  <p class="status" id="send-status" role="status" aria-live="polite"></p>
+  <div class="queue-wrap" id="queue-wrap" hidden>
+    <div class="queue-head"><h3 id="queue-h">Queue</h3><button type="button" class="ghost small" id="clear-done" hidden>Clear finished</button></div>
+    <ul class="log queue" id="queue" aria-labelledby="queue-h" aria-live="polite"></ul>
+  </div>
+</section>
+
+</div>
+<div class="col">
+<section class="card" aria-labelledby="listen-h">
+  <div class="panel-head"><h2 id="listen-h">Listen</h2><span class="chip" id="listen-chip">Off</span></div>
+  <div class="wf-wrap"><canvas id="wf" width="720" height="150" aria-label="Waterfall showing the sound being heard. Data appears as two bright lines at 1200 and 2200 hertz." role="img"></canvas>
+    <span class="wf-mark" style="left:40%" aria-hidden="true">MARK</span><span class="wf-mark" style="left:73.3%" aria-hidden="true">SPACE</span>
+    <div class="wf-scale" aria-hidden="true"><span>0 Hz</span><span>1200</span><span>2200</span><span>3000</span></div>
+    <div class="wf-idle" id="wf-idle"><button type="button" id="wf-start">Start listening</button><span>Connect the radio's speaker to this device, or hold them close together.</span></div></div>
+  <div class="meter" aria-hidden="true"><i id="meter"></i></div>
+  <p class="status" id="listen-status" role="status" aria-live="polite">Not listening.</p>
+  <label class="check" style="margin-top:6px"><input type="checkbox" id="autoack" checked> Reply automatically when a message or file is sent to me</label>
+  <p class="hint" style="margin:4px 0 0 28px">The reply is one short packet with your callsign, so the sender knows it arrived and stops resending.</p>
+</section>
+
+<section class="card" aria-labelledby="rx-h">
+  <div class="panel-head">
+    <h2 id="rx-h">Received</h2>
+    <div class="tabs" role="tablist" aria-label="Received">
+      <button type="button" role="tab" id="tab-msgs" aria-selected="true" aria-controls="pane-msgs">Messages</button>
+      <button type="button" role="tab" id="tab-stations" aria-selected="false" aria-controls="pane-stations">Stations <span class="count" id="st-count">0</span></button>
+    </div>
+    <label class="show" id="show-wrap"><span class="vh">Show messages from</span>
+      <select id="show"><option value="all">Everyone</option><option value="me">To me</option></select></label>
+  </div>
+  <div class="log-box" id="pane-msgs" role="tabpanel" aria-labelledby="tab-msgs"><ul class="log" id="log" aria-live="polite"><li class="empty" id="log-empty">Nothing yet. Messages and files you receive appear here.</li><li class="empty" id="log-filtered" hidden>Nothing to show with this filter.</li></ul></div>
+  <div class="log-box" id="pane-stations" role="tabpanel" aria-labelledby="tab-stations" hidden><ul class="log stations" id="stations"><li class="empty" id="st-empty">No stations heard yet. Everyone whose packets you hear appears here.</li></ul></div>
+</section>
+</div>
+</div>
+
+<section class="card" aria-labelledby="test-h" id="test-panel" hidden>
+  <div class="panel-head"><h2 id="test-h">Test without a radio</h2></div>
+  <p class="hint" style="margin-top:-6px">Sends what's in step 2 through a pretend radio link with hiss and lost packets, then decodes it here.</p>
+  <div class="row">
+    <div class="field"><label for="snr">Hiss <span class="hint" id="snr-v">10 dB signal to noise</span></label><input type="range" id="snr" min="3" max="30" value="10"></div>
+    <div class="field"><label for="loss">Packets lost <span class="hint" id="loss-v">20%</span></label><input type="range" id="loss" min="0" max="50" step="5" value="20"></div>
+    <button type="button" class="ghost" id="selftest" disabled>Run test</button>
+  </div>
+  <p class="stats" id="test-stats" aria-live="polite"></p>
+</section>
+
+<div class="ptt-cue" id="ptt-cue" role="alert" aria-live="assertive" hidden><span class="ptt-dot" aria-hidden="true"></span><div><strong id="ptt-title"></strong><span id="ptt-sub"></span></div></div>
+</main>
+<footer class="foot">
+  <p><strong>Licence needed to transmit.</strong> On UK amateur bands, data needs a licence and your callsign, and must not be encrypted.</p>
+  <button type="button" class="linkish" id="open-about2">About and licensing</button>
+  <span>Works offline · nothing leaves this device</span>
+</footer>
+
+<dialog class="sheet" id="settings" aria-labelledby="settings-h">
+  <div class="sheet-head"><h2 id="settings-h">Radio settings</h2><button type="button" class="icon-btn" data-close aria-label="Close"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="sheet-body">
+    <div class="field"><label for="ptt">How does your radio start sending?</label>
+      <select id="ptt"><option value="auto">By itself (voice-activated or a cable)</option><option value="manual">I press and hold the talk button</option></select>
+      <span class="hint">If you press the button, you'll be told when to hold it and when to let go.</span></div>
+    <div class="field"><label for="txdelay">Lead-in before data <span class="hint" id="txdelay-v">300 ms</span></label><input type="range" id="txdelay" min="100" max="1000" step="50" value="300"><span class="hint">Longer gives voice-activated transmit time to switch on.</span></div>
+    <div class="field"><label for="vol">Volume <span class="hint" id="vol-v">50%</span></label><input type="range" id="vol" min="5" max="100" value="50"><span class="hint">Too loud distorts the tones. Start around half and adjust if the other end sees damaged packets.</span></div>
+    <div class="field"><span class="label">Speed</span><span class="hint">Choose 1200 or 300 baud in the top bar. 300 is four times slower but survives echo, so use it through a speaker and microphone, in echoey rooms or on weak signals. Listening always hears both speeds.</span></div>
+  </div>
+</dialog>
+
+<dialog class="sheet" id="about" aria-labelledby="about-h">
+  <div class="sheet-head"><h2 id="about-h">About Smoke Signal</h2><button type="button" class="icon-btn" data-close aria-label="Close"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="sheet-body">
+    <p>A modem in your browser. It turns messages, photos and files into sound that any radio can carry, and turns that sound back into messages. It works offline, and nothing you send or receive leaves this device except as sound.</p>
+    <h3>How it works</h3>
+    <dl class="kv">
+      <dt>Signal</dt><dd>Bell 202 AFSK tones at 1200 and 2200 Hz, at 1200 or 300 baud</dd>
+      <dt>Packets</dt><dd>AX.25 UI frames with a CRC, the same format as APRS. Direwolf can decode them.</dd>
+      <dt>Files</dt><dd>Split into blocks with extra recovery packets, so a file arrives even when some packets are lost. Resends join up with what was heard before.</dd>
+      <dt>Replies</dt><dd>A station a message is addressed to replies with a short acknowledgement, so the sender stops resending.</dd>
+    </dl>
+    <p class="legal"><strong>Before you transmit:</strong> in the UK, sending data on amateur radio bands needs a licence and your callsign, which is sent with every packet. Messages must not be encrypted. Leaving it repeating while you're away from the radio counts as unattended operation, which has its own conditions. Licence-free radios have their own rules. Check with Ofcom before using this on air.</p>
+    <p class="hint">Provided "as is", without warranty: it isn't an emergency-grade system, so in an emergency use 999 or 112 first. Free and open source under the Apache 2.0 licence. <a href="https://github.com/droo-bin/smoke-signal" target="_blank" rel="noopener">Source code and offline downloads</a>.</p>
+  </div>
+</dialog>
+
+<script>
+%%MODEM%%
+</script>
+<script>
+(function(){
+'use strict';
+var $ = function(id){ return document.getElementById(id); };
+var store = { get: function(k){ try { return localStorage.getItem(k); } catch(e){ return null; } },
+              set: function(k, v){ try { localStorage.setItem(k, v); } catch(e){} } };
+
+/* ---------- settings ---------- */
+$('call').value = store.get('call') || '';
+$('txdelay').value = store.get('txdelay') || 300;
+function showSettings(){
+  $('txdelay-v').textContent = $('txdelay').value + ' ms';
+  $('vol-v').textContent = $('vol').value + '%';
+  $('quality-v').textContent = $('quality').value + '%';
+  $('snr-v').textContent = $('snr').value + ' dB signal to noise';
+  $('loss-v').textContent = $('loss').value + '%';
+}
+['txdelay', 'vol', 'quality', 'snr', 'loss'].forEach(function(id){ $(id).addEventListener('input', showSettings); });
+$('call').addEventListener('input', function(){ store.set('call', $('call').value.trim().toUpperCase()); updatePlan(); });
+$('txdelay').addEventListener('change', function(){ store.set('txdelay', $('txdelay').value); updatePlan(); });
+showSettings();
+
+function callsign(){ try { Modem.parseCall($('call').value); return $('call').value.trim().toUpperCase(); } catch(e){ return null; } }
+function showCallBadge(){ var c = callsign(); $('callfield').classList.toggle('missing', !c); document.title = c ? c + ' \u00b7 Smoke Signal' : 'Smoke Signal'; }
+showCallBadge();
+$('call').addEventListener('input', showCallBadge);
+
+/* ---------- what to send ---------- */
+var mode = 'text', file = null, shrunk = null;
+function selectTab(which){
+  mode = which;
+  $('tab-text').setAttribute('aria-selected', which === 'text');
+  $('tab-file').setAttribute('aria-selected', which === 'file');
+  $('pane-text').hidden = which !== 'text';
+  $('pane-file').hidden = which !== 'file';
+  updatePlan();
+}
+$('tab-text').addEventListener('click', function(){ selectTab('text'); });
+$('tab-file').addEventListener('click', function(){ selectTab('file'); });
+$('msg').addEventListener('input', function(){ updatePlan(); });
+$('to').addEventListener('input', function(){ updatePlan(); });
+
+function kb(n){ return n < 1024 ? n + ' bytes' : (n / 1024).toFixed(n < 10240 ? 1 : 0) + ' KB'; }
+function secs(s){ return s < 90 ? Math.round(s) + ' s' : Math.floor(s / 60) + ' min ' + Math.round(s % 60) + ' s'; }
+
+function takeFile(f){
+  if (!f) return;
+  f.arrayBuffer().then(function(buf){
+    file = { name: f.name, type: f.type || 'application/octet-stream', bytes: new Uint8Array(buf) };
+    $('file-info').hidden = false;
+    $('file-name').textContent = f.name;
+    $('file-size').textContent = kb(f.size);
+    var isImage = /^image\/(png|jpeg|webp|gif|bmp|avif|heic)/.test(file.type);
+    $('shrink').hidden = !isImage;
+    $('thumb').textContent = isImage ? '' : (f.name.split('.').pop() || 'file').slice(0, 5).toUpperCase();
+    return isImage ? makeShrunk() : (shrunk = null, updatePlan());
+  });
+}
+$('file').addEventListener('change', function(){ takeFile(this.files[0]); });
+var drop = $('drop');
+['dragenter', 'dragover'].forEach(function(ev){ drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.add('over'); }); });
+['dragleave', 'drop'].forEach(function(ev){ drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.remove('over'); }); });
+drop.addEventListener('drop', function(e){ takeFile(e.dataTransfer.files[0]); });
+['shrink-on', 'dim', 'quality', 'grey'].forEach(function(id){ $(id).addEventListener('change', makeShrunk); });
+$('quality').addEventListener('input', debounce(makeShrunk, 250));
+
+function debounce(fn, ms){ var t; return function(){ clearTimeout(t); t = setTimeout(fn, ms); }; }
+
+// Re-encode a photo small: scale down, optional black and white, then WebP (or JPEG where WebP can't be made).
+function makeShrunk(){
+  if (!file) return;
+  if (!$('shrink-on').checked || $('shrink').hidden) { shrunk = null; showThumb(file); return updatePlan(); }
+  var url = URL.createObjectURL(new Blob([file.bytes], { type: file.type }));
+  var img = new Image();
+  img.onload = function(){
+    URL.revokeObjectURL(url);
+    var max = +$('dim').value, scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    var w = Math.max(1, Math.round(img.naturalWidth * scale)), h = Math.max(1, Math.round(img.naturalHeight * scale));
+    var c = document.createElement('canvas'); c.width = w; c.height = h;
+    var g = c.getContext('2d'); g.drawImage(img, 0, 0, w, h);
+    if ($('grey').checked) {
+      var d = g.getImageData(0, 0, w, h), p = d.data;
+      for (var i = 0; i < p.length; i += 4) { var y = 0.299 * p[i] + 0.587 * p[i + 1] + 0.114 * p[i + 2]; p[i] = p[i + 1] = p[i + 2] = y; }
+      g.putImageData(d, 0, 0);
+    }
+    var q = +$('quality').value / 100;
+    c.toBlob(function(b){
+      if (b && b.type === 'image/webp') return done(b, 'webp');
+      c.toBlob(function(j){ done(j, 'jpg'); }, 'image/jpeg', q);
+    }, 'image/webp', q);
+    function done(blob, ext){
+      blob.arrayBuffer().then(function(buf){
+        shrunk = { name: file.name.replace(/\.[^.]+$/, '') + '.' + ext, type: blob.type, bytes: new Uint8Array(buf), w: w, h: h };
+        showThumb(shrunk);
+        $('file-size').textContent = kb(file.bytes.length) + ' → ' + kb(shrunk.bytes.length) + ' (' + w + '×' + h + ')';
+        updatePlan();
+      });
+    }
+  };
+  img.onerror = function(){ URL.revokeObjectURL(url); $('shrink').hidden = true; shrunk = null; updatePlan(); };
+  img.src = url;
+}
+function showThumb(f){
+  if (!/^image\//.test(f.type)) return;
+  var u = URL.createObjectURL(new Blob([f.bytes], { type: f.type }));
+  $('thumb').innerHTML = ''; var i = document.createElement('img'); i.src = u; i.alt = ''; $('thumb').appendChild(i);
+}
+
+/* ---------- planning a transmission ---------- */
+var plan = null, planSeq = 0;
+var SHORT = 200; // bytes of text that fit in one packet
+function current(){
+  if (mode === 'text') { var t = $('msg').value.trim(); return t ? { text: t } : null; }
+  var f = shrunk || file; return f ? { name: f.name, type: f.type, bytes: f.bytes } : null;
+}
+// "To": blank means everyone (sent to the group address SMOKE); false means it isn't a valid callsign.
+function toCall(){
+  var v = $('to').value.trim();
+  if (!v) return null;
+  try { Modem.parseCall(v); return v.toUpperCase(); } catch (e) { return false; }
+}
+function updatePlan(){
+  var content = current(), seq = ++planSeq, delay = +$('txdelay').value;
+  $('send').disabled = $('selftest').disabled = true;
+  if (toCall() === false) { plan = null; $('plan').className = 'plan bad'; $('plan').textContent = 'The To callsign should look like M7ABC or M7ABC-1, or leave it blank for everyone.'; return; }
+  if (!content) { plan = null; $('plan').className = 'plan'; $('plan').textContent = mode === 'text' ? 'Type a message to see how long it takes to send.' : 'Choose a file to see how long it takes to send.'; return; }
+  var reply = toCall() ? ' ' + toCall() + ' replies automatically when it arrives.' : '';
+  if (content.text != null && Modem.encode(content.text).length <= SHORT) {
+    plan = { single: true, text: content.text, summary: content.text };
+    var f = Modem.buildFrame('M7ABC-15', toCall() || 'SMOKE', Modem.msgInfo(0, content.text));
+    return showPlan('One packet, about ' + secs(Modem.airtime([f.length], delay, baud())) + ' on air.' + reply);
+  }
+  Modem.compress(Modem.packContent(content)).then(function(c){
+    if (seq !== planSeq) return;
+    var k = Math.max(1, Math.ceil(c.bytes.length / Modem.BLOCK));
+    if (k > Modem.MAX_BLOCKS) { plan = null; $('plan').className = 'plan bad'; $('plan').textContent = 'Too big to send: the most a single transfer can hold is ' + Math.floor(Modem.MAX_BLOCKS * Modem.BLOCK / 1048576) + ' MB after compression. Try a smaller size or lower quality.'; return; }
+    var first = 2 * k + 2, len = 16 + 2 + 11 + Modem.BLOCK + 2;
+    plan = { single: false, bytes: c.bytes, compressed: c.compressed, k: k, first: first,
+             summary: content.text != null ? content.text : content.name + ' (' + kb(c.bytes.length) + ')' };
+    var t = Modem.airtime(new Array(first).fill(len), delay, baud()) + Math.floor(first / BURST) * (delay / 1000 + GAP);
+    showPlan(k + ' blocks (' + kb(c.bytes.length) + (c.compressed ? ' compressed' : '') + '), sent as ' + first +
+             ' packets so a few can go missing. About ' + secs(t) + ' on air' + (baud() === 300 ? ' at 300 baud' : '') + '.' + reply);
+    if (t > 600) { $('plan').className = 'plan warn'; $('plan').textContent += ' That is a long time on air: check your radio can transmit that long without overheating, and consider a smaller size or lower quality.'; }
+  });
+}
+function showPlan(text){
+  $('plan').className = 'plan'; $('plan').textContent = text;
+  $('send').disabled = !callsign() || !plan;
+  $('selftest').disabled = !plan || testing;
+  if (!callsign()) $('send-status').textContent = 'Enter your callsign to send. You can still run the test below.';
+  else if ($('send-status').textContent.indexOf('callsign') >= 0) $('send-status').textContent = '';
+}
+
+/* ---------- audio out ---------- */
+var ctx = null, BURST = 8, GAP = 1.0, testing = false;
+function audio(){
+  if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx.state === 'suspended') ctx.resume();
+  return ctx;
+}
+function play(samples){
+  var a = audio(), buf = a.createBuffer(1, samples.length, a.sampleRate);
+  buf.getChannelData(0).set(samples);
+  var src = a.createBufferSource(), g = a.createGain();
+  g.gain.value = +$('vol').value / 100 * 2;
+  src.buffer = buf; src.connect(g); g.connect(a.destination);
+  return new Promise(function(resolve){ src.onended = resolve; src.start(); });
+}
+var testTx = null; // set by tests to capture frames instead of playing sound
+// With a press-to-talk radio, a banner says when to hold the button, counts down, then says when to let go.
+function manualPtt(){ return $('ptt').value === 'manual'; }
+var speed = 1200;
+function baud(){ return speed; }
+function showCue(title, sub, release){
+  $('ptt-title').textContent = title; $('ptt-sub').textContent = sub || '';
+  $('ptt-cue').classList.toggle('release', !!release); $('ptt-cue').hidden = false;
+}
+function hideCue(){ $('ptt-cue').hidden = true; }
+function txLight(on){ $('ind-tx').classList.toggle('on', on); }
+async function transmitFrames(frames, what){
+  if (testTx) { testTx(frames); return wait(40); }
+  var audioOut = Modem.modulate(frames, { sampleRate: audio().sampleRate, baud: baud(), txDelayMs: manualPtt() ? 150 : +$('txdelay').value });
+  if (!manualPtt()) { txLight(true); return play(audioOut).then(function(){ txLight(false); }); }
+  if (navigator.vibrate) { try { navigator.vibrate([120, 80, 120]); } catch (e) {} }
+  for (var n = 2; n > 0 && !stopRequested; n--) { showCue('Hold the talk button now', (what ? what + ' · ' : '') + 'sending in ' + n + '…'); await wait(1000); }
+  if (stopRequested) { hideCue(); return; }
+  showCue('Keep holding…', 'Sending ' + (frames.length === 1 ? '1 packet' : frames.length + ' packets') + ', about ' + Math.ceil(audioOut.length / audio().sampleRate) + ' s');
+  txLight(true); await play(audioOut); txLight(false);
+  showCue('Let go of the talk button', 'Done. Listening for replies.', true);
+  setTimeout(function(){ if ($('ptt-cue').classList.contains('release')) hideCue(); }, 1800);
+}
+$('ptt').value = store.get('ptt') === 'manual' ? 'manual' : 'auto';
+$('ptt').addEventListener('change', function(){ store.set('ptt', this.value); });
+function setSpeed(b, save){
+  speed = b === 300 ? 300 : 1200;
+  Array.prototype.forEach.call(document.querySelectorAll('.seg [data-baud]'), function(btn){ btn.setAttribute('aria-pressed', String(+btn.dataset.baud === speed)); });
+  if (save) { store.set('baud', String(speed)); updatePlan(); }
+}
+setSpeed(store.get('baud') === '300' ? 300 : 1200);
+Array.prototype.forEach.call(document.querySelectorAll('.seg [data-baud]'), function(btn){ btn.addEventListener('click', function(){ setSpeed(+btn.dataset.baud, true); }); });
+/* dialogs and theme */
+function openSheet(id, from){ var d = $(id); d.returnFocus = from; if (d.showModal) d.showModal(); else d.setAttribute('open', ''); }
+Array.prototype.forEach.call(document.querySelectorAll('dialog.sheet'), function(d){
+  d.addEventListener('click', function(e){ if (e.target === d || e.target.closest('[data-close]')) d.close(); });
+  d.addEventListener('close', function(){ if (d.returnFocus) d.returnFocus.focus(); });
+});
+$('open-settings').addEventListener('click', function(){ openSheet('settings', this); });
+$('open-about').addEventListener('click', function(){ openSheet('about', this); });
+$('open-about2').addEventListener('click', function(){ openSheet('about', this); });
+var THEMES = { auto: 'match my device', light: 'light', dark: 'dark' }, theme = store.get('theme');
+function setTheme(t){
+  theme = THEMES[t] ? t : 'auto';
+  if (theme === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', theme);
+  $('theme').setAttribute('aria-label', 'Theme: ' + THEMES[theme]); $('theme').title = 'Theme: ' + THEMES[theme] + ' (click to change)';
+}
+setTheme(theme);
+$('theme').addEventListener('click', function(){ setTheme({ auto: 'light', light: 'dark', dark: 'auto' }[theme]); store.set('theme', theme); });
+function wait(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
+
+// Waits that Stop (or new work arriving) can cut short.
+var cancelWait = null;
+function pause(ms){
+  return new Promise(function(resolve){
+    var t = setTimeout(done, ms);
+    function done(){ clearTimeout(t); if (cancelWait === done) cancelWait = null; resolve(); }
+    cancelWait = done;
+  });
+}
+
+// Listen before talking: wait until no one else is sending, then a random short wait so two stations
+// that were both waiting don't start at the same instant.
+var lbtNoted = false, stopRequested = false;
+async function waitForClear(label){
+  if (!$('lbt').checked) return;
+  if (!listening) {
+    if (!lbtNoted) { lbtNoted = true; $('send-status').textContent = 'Tip: start listening so Smoke Signal can wait for a clear channel and hear replies.'; await pause(1500); }
+    return;
+  }
+  while (!stopRequested && listening) {
+    if (listening.demod.busy()) { $('send-status').textContent = label + 'waiting for a clear channel…'; await pause(150); continue; }
+    await pause(200 + Math.random() * 800);
+    if (!listening || !listening.demod.busy()) return;
+  }
+}
+
+/* ---------- the queue ----------
+   Everything you send joins a queue and goes out in order. Messages to one callsign wait for that station's
+   automatic "got it" reply: until it arrives they're tried again with growing gaps (or, with repeating on,
+   every round until it arrives). Replies we owe other stations jump the queue. */
+var queue = [], acksOut = [], running = false, itemSeq = 0, wakeUp = null;
+var RETRY_BASE = 10000, MAX_TRIES = 5, ACK_GAP = 2.0;
+function newId(){ return Math.floor(Math.random() * 65536); }
+// Files keep the same id every time they're sent (it comes from their content), and each send carries on
+// from the last packet number used, so a resend only ever adds fresh packets to what listeners already have.
+var nextSeeds = {};
+try { nextSeeds = JSON.parse(store.get('nextSeeds') || '{}'); } catch (e) {}
+function noteSeed(item){ nextSeeds[item.id] = Math.max(nextSeeds[item.id] || 0, item.sender.seed); store.set('nextSeeds', JSON.stringify(nextSeeds)); }
+function makeItem(p, from, to){
+  var item = { n: ++itemSeq, id: newId(), from: from, to: to, single: p.single, summary: p.summary, isFile: !p.single && p.summary.indexOf('(') > 0,
+               repeat: $('repeat').checked, every: +$('every').value, rounds: 0, tries: 0, packets: 0, status: 'waiting', nextAt: 0 };
+  if (p.single) item.info = Modem.msgInfo(item.id, p.text);
+  else {
+    item.id = Modem.contentId(p.bytes, p.compressed);
+    item.bytes = p.bytes; item.compressed = p.compressed;
+    item.sender = new Modem.BulletinSender(item.id, p.bytes, p.compressed, nextSeeds[item.id] || 0);
+    item.first = p.first; item.k = p.k;
+  }
+  return item;
+}
+function itemFrames(item, n){
+  var dest = item.to || 'SMOKE';
+  if (item.single) return [Modem.buildFrame(item.from, dest, item.info)];
+  var out = [];
+  if (item.blocks) { // specific blocks, e.g. blocks 37 to 157
+    item.blocks.forEach(function(seed){ out.push(Modem.buildFrame(item.from, dest, item.sender.packet(seed))); });
+    item.blocks = null;
+  } else for (var i = 0; i < n; i++) out.push(Modem.buildFrame(item.from, dest, item.sender.next()));
+  noteSeed(item);
+  return out;
+}
+
+// Files you've sent are remembered (on this device only) so you can send more of them after a reload.
+function b64(u8){ var s = ''; for (var i = 0; i < u8.length; i += 8192) s += String.fromCharCode.apply(null, u8.subarray(i, i + 8192)); return btoa(s); }
+function unb64(s){ var b = atob(s), u = new Uint8Array(b.length); for (var i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }
+function saveSent(){
+  var keep = queue.filter(function(q){ return !q.single && q.bytes; }).slice(-8).map(function(q){
+    return { id: q.id, to: q.to, from: q.from, summary: q.summary, b: b64(q.bytes), c: q.compressed, k: q.k, first: q.first, status: active(q) ? 'stopped' : q.status, at: q.at || Date.now() };
+  });
+  try { store.set('sent', JSON.stringify(keep)); } catch (e) {}
+}
+function loadSent(){
+  var list = []; try { list = JSON.parse(store.get('sent') || '[]'); } catch (e) {}
+  list.forEach(function(x){
+    var bytes = unb64(x.b);
+    var item = makeItem({ single: false, bytes: bytes, compressed: x.c, k: x.k, first: x.first, summary: x.summary }, x.from, x.to);
+    item.status = x.status === 'acked' ? 'acked' : 'earlier'; item.at = x.at;
+    queue.push(item);
+  });
+  if (list.length) renderQueue();
+}
+function active(q){ return q.status === 'waiting' || q.status === 'sending' || q.status === 'awaiting' || q.status === 'repeating'; }
+function itemById(id, test){ return queue.filter(function(q){ return q.id === id && test(q); }).sort(function(a, b){ return active(b) - active(a) || b.n - a.n; })[0]; }
+function sleep(ms){
+  return new Promise(function(resolve){
+    var t = setTimeout(done, ms);
+    function done(){ clearTimeout(t); if (wakeUp === done) wakeUp = null; resolve(); }
+    wakeUp = done;
+  });
+}
+function kick(){ if (wakeUp) wakeUp(); if (!running) run(); }
+
+async function run(){
+  running = true; stopRequested = false; $('stop').hidden = false;
+  try {
+    while (!stopRequested) {
+      if (acksOut.length) { await sendAck(acksOut.shift()); continue; }
+      var now = Date.now(), ready = queue.filter(function(q){ return active(q) && q.nextAt <= now; })[0];
+      if (ready) { await sendItem(ready); continue; }
+      var pending = queue.filter(active);
+      if (!pending.length) break;
+      var soonest = Math.min.apply(null, pending.map(function(q){ return q.nextAt; }));
+      await sleep(Math.max(50, Math.min(1000, soonest - now)));
+      renderQueue();
+    }
+  } finally {
+    running = false; $('stop').hidden = true; renderQueue();
+    if (!queue.some(active) && !acksOut.length && !/Stopped|Waiting/.test($('send-status').textContent)) $('send-status').textContent = '';
+  }
+}
+
+async function sendItem(item){
+  item.status = 'sending'; renderQueue();
+  var n = item.single ? 1 : item.blocks ? item.blocks.length : item.extra ? item.extra : (item.rounds === 0 || (item.repeat && !item.to) ? item.first : Math.max(4, Math.ceil(item.k / 2) + 2));
+  item.extra = 0;
+  var frames = itemFrames(item, n), label = '“' + short(item.summary, 28) + '”: ';
+  item.rounds++; item.tries++;
+  var gap = item.to ? ACK_GAP : GAP; // leave room for the other station's reply between bursts
+  for (var i = 0; i < frames.length && item.status === 'sending' && !stopRequested; i += BURST) {
+    var burst = frames.slice(i, i + BURST);
+    await waitForClear(label);
+    if (item.status !== 'sending' || stopRequested) break;
+    $('send-status').textContent = label + (frames.length > 1 ? 'sending packets ' + (i + 1) + '–' + (i + burst.length) + ' of ' + frames.length + '…' : 'sending…');
+    await transmitFrames(burst, short(item.summary, 24));
+    item.packets += burst.length;
+    while (acksOut.length && !stopRequested) await sendAck(acksOut.shift());
+    if (i + BURST < frames.length && item.status === 'sending') await pause(gap * 1000);
+  }
+  if (item.status !== 'sending') return; // acknowledged or stopped part way through
+  if (item.to) {
+    if (item.repeat) { item.status = 'repeating'; item.nextAt = Date.now() + item.every * 1000; }
+    else if (item.tries >= MAX_TRIES) item.status = 'noreply';
+    else { item.status = 'awaiting'; item.nextAt = Date.now() + RETRY_BASE * Math.pow(2, item.tries - 1); }
+  } else if (item.repeat) { item.status = 'repeating'; item.nextAt = Date.now() + item.every * 1000; }
+  else item.status = 'sent';
+  $('send-status').textContent = '';
+  renderQueue();
+}
+
+// Short control packets we owe other stations: "got it" replies, and "send me N more" requests.
+// They jump the queue and go out after a short random wait, once the channel is clear.
+function queueAck(to, id){
+  if (!$('autoack').checked || !callsign()) return;
+  if (acksOut.some(function(a){ return a.to === to && a.id === id && a.kind === 'ack'; })) return;
+  acksOut.push({ kind: 'ack', to: to, id: id }); kick();
+}
+function queueNeed(to, id, count){
+  if (!callsign()) return false;
+  acksOut = acksOut.filter(function(a){ return !(a.kind === 'need' && a.to === to && a.id === id); });
+  acksOut.push({ kind: 'need', to: to, id: id, count: count }); kick();
+  return true;
+}
+async function sendAck(a){
+  await wait(300 + Math.random() * 600);
+  var what = a.kind === 'ack' ? 'Reply to ' + a.to : 'Asking ' + a.to + ' for more';
+  await waitForClear(what + ': ');
+  if (stopRequested) return;
+  $('send-status').textContent = a.kind === 'ack' ? 'Telling ' + a.to + ' it arrived…' : 'Asking ' + a.to + ' for ' + a.count + ' more packets…';
+  var info = a.kind === 'ack' ? Modem.ackInfo(a.id) : Modem.needInfo(a.id, a.count);
+  await transmitFrames([Modem.buildFrame(callsign(), a.to, info)], what);
+  $('send-status').textContent = '';
+}
+// Someone missing pieces of our bulletin asked for more: send them that many fresh packets (plus a few spare).
+function gotNeed(from, id, count){
+  var item = itemById(id, function(q){ return !q.single && (!q.to || baseCall(q.to) === baseCall(from)); });
+  if (!item || (item.status === 'acked' && item.to) || Date.now() - (item.lastNeed || 0) < 3000) return;
+  item.lastNeed = Date.now(); item.extra = count + 3; item.askedBy = from;
+  if (item.to) item.tries = 0; // they're there and listening
+  if (item.status !== 'sending') { item.status = 'waiting'; item.nextAt = 0; }
+  renderQueue(); kick();
+}
+function gotAck(from, id){
+  var item = itemById(id, function(q){ return q.to && baseCall(q.to) === baseCall(from); });
+  if (!item || item.status === 'acked') return;
+  item.status = 'acked'; item.ackedBy = from; item.ackedAt = Date.now();
+  if (cancelWait) cancelWait();
+  renderQueue(); kick();
+}
+
+function short(s, n){ s = String(s).replace(/\s+/g, ' '); return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+function statusText(q){
+  var who = q.to || 'everyone', left = Math.max(0, Math.ceil((q.nextAt - Date.now()) / 1000));
+  var tries = q.tries + (q.tries === 1 ? ' try' : ' tries');
+  switch (q.status) {
+    case 'waiting': return q.askedBy ? q.askedBy + ' asked for more; sending next' : 'Waiting to send';
+    case 'sending': return 'Sending now';
+    case 'awaiting': return 'Sent (' + tries + '). No reply from ' + q.to + ' yet; trying again in ' + left + ' s';
+    case 'repeating': return 'Round ' + q.rounds + ' sent' + (q.to ? ', no reply yet' : '') + '. Next round in ' + left + ' s';
+    case 'acked': return '✓ Received by ' + q.ackedBy + (q.tries > 1 ? ' after ' + tries : '');
+    case 'noreply': return 'No reply from ' + q.to + ' after ' + tries;
+    case 'sent': return 'Sent to everyone' + (q.single ? '' : ', ' + q.packets + ' packets');
+    case 'stopped': return 'Stopped after ' + q.packets + ' packets';
+    case 'earlier': return 'Sent earlier. Send more to help anyone who missed parts of it';
+  }
+  return '';
+}
+function renderQueue(){
+  var ul = $('queue');
+  $('queue-wrap').hidden = !queue.length;
+  ul.innerHTML = '';
+  queue.slice().reverse().forEach(function(q){
+    var li = document.createElement('li'); li.dataset.n = q.n; li.className = 'q-' + q.status;
+    li.innerHTML = '<div class="q-main"><div class="q-what"></div><div class="hint q-status"></div></div><div class="q-actions"></div>';
+    li.querySelector('.q-what').textContent = 'To ' + (q.to || 'everyone') + ': ' + short(q.summary, 60);
+    li.querySelector('.q-status').textContent = statusText(q);
+    var acts = li.querySelector('.q-actions');
+    function add(label, act, aria){ var b = document.createElement('button'); b.type = 'button'; b.className = 'ghost small'; b.textContent = label; b.dataset.act = act; b.setAttribute('aria-label', aria + ': ' + short(q.summary, 40)); acts.appendChild(b); }
+    if (active(q)) add('Stop', 'stop', 'Stop sending');
+    if (q.status === 'noreply') add('Try again', 'again', 'Try again');
+    if (!q.single && !active(q)) add(q.showMore ? 'Close' : 'Send more…', 'toggle-more', q.showMore ? 'Close send more options for' : 'Send more of');
+    if (!active(q)) add('Remove', 'remove', 'Remove from queue');
+    if (q.showMore && !q.single && !active(q)) li.appendChild(moreForm(q));
+    ul.appendChild(li);
+  });
+  $('clear-done').hidden = !queue.some(function(q){ return !active(q); });
+  saveSent();
+}
+// "Send more…": either some fresh mixed packets (any of them helps anyone missing pieces), or particular blocks.
+function moreForm(q){
+  var f = document.createElement('div'); f.className = 'more-form';
+  var nId = 'more-n-' + q.n, aId = 'more-a-' + q.n, bId = 'more-b-' + q.n;
+  q.moreN = q.moreN || Math.max(4, Math.ceil(q.k / 2) + 2); q.blockA = q.blockA || 1; q.blockB = q.blockB || q.k;
+  f.innerHTML =
+    '<div class="more-row"><label for="' + nId + '">Fresh packets</label><input type="number" id="' + nId + '" min="1" max="' + (4 * q.k) + '" value="' + q.moreN + '">' +
+    '<button type="button" class="small" data-act="more-n">Send these</button><span class="hint">Any of them helps anyone still missing pieces.</span></div>' +
+    '<div class="more-row"><span class="label" id="more-l-' + q.n + '">Particular blocks (1 to ' + q.k + ')</span>' +
+    '<input type="number" id="' + aId + '" min="1" max="' + q.k + '" value="' + q.blockA + '" aria-label="First block" aria-describedby="more-l-' + q.n + '"><span aria-hidden="true">to</span>' +
+    '<input type="number" id="' + bId + '" min="1" max="' + q.k + '" value="' + q.blockB + '" aria-label="Last block" aria-describedby="more-l-' + q.n + '">' +
+    '<button type="button" class="small" data-act="more-blocks">Send blocks</button></div>';
+  f.addEventListener('input', function(e){
+    if (e.target.id === nId) q.moreN = +e.target.value;
+    if (e.target.id === aId) q.blockA = +e.target.value;
+    if (e.target.id === bId) q.blockB = +e.target.value;
+  });
+  return f;
+}
+// Every second, refresh just the status lines (rebuilding would wipe out anything being typed in a form).
+function updateQueueStatus(){
+  queue.forEach(function(q){ var li = $('queue').querySelector('li[data-n="' + q.n + '"] .q-status'); if (li) li.textContent = statusText(q); });
+}
+$('queue').addEventListener('click', function(e){
+  var b = e.target.closest('button[data-act]'); if (!b) return;
+  var n = +b.closest('li').dataset.n, q = queue.filter(function(x){ return x.n === n; })[0]; if (!q) return;
+  if (b.dataset.act === 'stop') { q.status = 'stopped'; if (cancelWait) cancelWait(); }
+  if (b.dataset.act === 'again') { q.status = 'waiting'; q.tries = 0; q.nextAt = 0; kick(); }
+  if (b.dataset.act === 'toggle-more') { q.showMore = !q.showMore; renderQueue(); var t = $('queue').querySelector('li[data-n="' + n + '"] ' + (q.showMore ? 'input' : '[data-act=toggle-more]')); if (t) t.focus(); return; }
+  if (b.dataset.act === 'more-n') {
+    var count = Math.max(1, Math.min(4 * q.k, q.moreN | 0));
+    q.extra = count; q.showMore = false; q.status = 'waiting'; q.nextAt = 0; q.tries = 0; kick();
+  }
+  if (b.dataset.act === 'more-blocks') {
+    var a = Math.max(1, Math.min(q.k, q.blockA | 0)), z = Math.max(1, Math.min(q.k, q.blockB | 0));
+    if (a > z) { var t2 = a; a = z; z = t2; }
+    q.blocks = []; for (var i = a; i <= z; i++) q.blocks.push(i - 1);
+    q.showMore = false; q.status = 'waiting'; q.nextAt = 0; q.tries = 0; kick();
+  }
+  if (b.dataset.act === 'remove') queue = queue.filter(function(x){ return x !== q; });
+  renderQueue();
+});
+$('clear-done').addEventListener('click', function(){ queue = queue.filter(active); renderQueue(); $('send').focus(); });
+setInterval(function(){ if (queue.some(function(q){ return q.status === 'awaiting' || q.status === 'repeating'; })) updateQueueStatus(); }, 1000);
+
+$('send').addEventListener('click', function(){
+  if (!plan || !callsign()) return;
+  var item = makeItem(plan, callsign(), toCall());
+  // Sending a file that's already in the queue (and not being sent) reuses that entry rather than adding another.
+  var same = !item.single && queue.filter(function(q){ return !active(q) && !q.single && q.id === item.id && q.to === item.to; })[0];
+  if (same) {
+    queue = queue.filter(function(q){ return q !== same; });
+    same.status = 'waiting'; same.tries = 0; same.nextAt = 0; same.rounds = 0; same.from = item.from;
+    same.repeat = item.repeat; same.every = item.every; same.showMore = false; same.n = ++itemSeq;
+    item = same;
+  }
+  queue.push(item);
+  renderQueue();
+  $('send-status').textContent = running ? 'Added to the queue.' : '';
+  kick();
+});
+$('stop').addEventListener('click', function(){
+  stopRequested = true;
+  queue.forEach(function(q){ if (active(q)) q.status = 'stopped'; });
+  acksOut = [];
+  if (cancelWait) cancelWait(); if (wakeUp) wakeUp();
+  $('send-status').textContent = 'Stopped.';
+  renderQueue();
+});
+$('repeat').addEventListener('change', function(){ $('every').disabled = !this.checked; });
+$('lbt').checked = store.get('lbt') !== 'off';
+$('lbt').addEventListener('change', function(){ store.set('lbt', this.checked ? 'on' : 'off'); });
+$('autoack').checked = store.get('autoack') !== 'off';
+$('autoack').addEventListener('change', function(){ store.set('autoack', this.checked ? 'on' : 'off'); });
+
+/* ---------- receiving ---------- */
+var bulletins = {}, logCount = 0, seenMsgs = {};
+function stamp(){ return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
+function addItem(li){
+  var e = $('log-empty'); if (e) e.remove();
+  $('log').insertBefore(li, $('log').firstChild);
+  logCount++;
+  filterItem(li); showFilteredNote();
+}
+// Something arrived that matters: from a watched station, or addressed to you.
+var unseen = 0;
+function flagIfImportant(li){
+  if (prefs.mute[li.dataset.from] || !(li.dataset.toMe || prefs.watch[li.dataset.from])) return;
+  li.classList.add('flag');
+  if (navigator.vibrate) { try { navigator.vibrate(150); } catch (e) {} }
+  if (document.hidden) { unseen++; document.title = '(' + unseen + ') Smoke Signal'; }
+}
+document.addEventListener('visibilitychange', function(){ if (!document.hidden) { unseen = 0; document.title = 'Smoke Signal'; } });
+
+/* ---------- stations heard, watch and mute ---------- */
+var stations = {}, prefs = { watch: {}, mute: {} };
+try { var saved = JSON.parse(store.get('prefs') || '{}'); prefs.watch = saved.watch || {}; prefs.mute = saved.mute || {}; } catch (e) {}
+function savePrefs(){ store.set('prefs', JSON.stringify(prefs)); }
+function heard(call, level){
+  var st = stations[call], isNew = !st;
+  if (!st) st = stations[call] = { call: call, packets: 0, level: 0 };
+  st.last = Date.now(); st.packets++; st.level = level || 0;
+  if (isNew) rebuildShowMenu();
+  if (!$('pane-stations').hidden) renderStations(); else $('st-count').textContent = Object.keys(stations).length;
+}
+function ago(t){
+  var s = Math.round((Date.now() - t) / 1000);
+  return s < 5 ? 'just now' : s < 60 ? s + ' s ago' : s < 3600 ? Math.round(s / 60) + ' min ago' : Math.round(s / 3600) + ' h ago';
+}
+function renderStations(){
+  var list = Object.keys(stations).map(function(k){ return stations[k]; }).sort(function(a, b){ return b.last - a.last; });
+  $('st-count').textContent = list.length;
+  var ul = $('stations');
+  $('st-empty').hidden = list.length > 0;
+  Array.prototype.slice.call(ul.querySelectorAll('li[data-call]')).forEach(function(li){ li.remove(); });
+  list.forEach(function(st){
+    var li = document.createElement('li'); li.dataset.call = st.call;
+    li.innerHTML = '<div class="st-info"><div class="st-call"></div><div class="hint"></div></div><div class="sig" role="img"><i></i></div>' +
+      '<div class="st-actions"><button type="button" class="ghost small" data-act="show"></button>' +
+      '<button type="button" class="ghost small" data-act="watch"></button><button type="button" class="ghost small" data-act="mute"></button></div>';
+    li.querySelector('.st-call').textContent = st.call;
+    if (prefs.watch[st.call]) li.querySelector('.st-call').insertAdjacentHTML('beforeend', '<span class="badge">watching</span>');
+    if (prefs.mute[st.call]) li.querySelector('.st-call').insertAdjacentHTML('beforeend', '<span class="badge">muted</span>');
+    li.querySelector('.hint').textContent = 'Last heard ' + ago(st.last) + ' · ' + st.packets + (st.packets === 1 ? ' packet' : ' packets');
+    var pct = Math.round(Math.min(1, st.level * 1.4) * 100);
+    li.querySelector('.sig i').style.width = pct + '%';
+    li.querySelector('.sig').setAttribute('aria-label', 'Signal level ' + pct + '%');
+    var show = li.querySelector('[data-act=show]'), w = li.querySelector('[data-act=watch]'), m = li.querySelector('[data-act=mute]');
+    show.textContent = 'Messages'; show.setAttribute('aria-label', 'Show messages from ' + st.call);
+    w.textContent = 'Watch'; w.setAttribute('aria-pressed', !!prefs.watch[st.call]); w.setAttribute('aria-label', 'Watch ' + st.call);
+    m.textContent = 'Mute'; m.setAttribute('aria-pressed', !!prefs.mute[st.call]); m.setAttribute('aria-label', 'Mute ' + st.call);
+    ul.appendChild(li);
+  });
+}
+$('stations').addEventListener('click', function(e){
+  var btn = e.target.closest('button[data-act]'); if (!btn) return;
+  var call = btn.closest('li').dataset.call, act = btn.dataset.act;
+  if (act === 'show') { rebuildShowMenu(); $('show').value = 'from:' + call; applyFilter(); selectRx('msgs'); return; }
+  var set = prefs[act];
+  if (set[call]) delete set[call]; else set[call] = true;
+  if (act === 'watch' && set[call]) delete prefs.mute[call];
+  if (act === 'mute' && set[call]) delete prefs.watch[call];
+  savePrefs(); renderStations(); applyFilter();
+  var again = $('stations').querySelector('li[data-call="' + call + '"] [data-act=' + act + ']'); if (again) again.focus();
+});
+setInterval(function(){ if (!$('pane-stations').hidden) renderStations(); }, 5000);
+
+function rebuildShowMenu(){
+  var sel = $('show'), keep = sel.value;
+  sel.innerHTML = '<option value="all">Everyone</option><option value="me">To me</option>';
+  Object.keys(stations).sort().forEach(function(c){ var o = document.createElement('option'); o.value = 'from:' + c; o.textContent = 'From ' + c; sel.appendChild(o); });
+  sel.value = keep; if (sel.value !== keep) sel.value = 'all';
+}
+function filterItem(li){
+  if (!li.dataset || li.dataset.from == null) return;
+  var f = $('show').value, from = li.dataset.from;
+  li.hidden = !!prefs.mute[from] || (f === 'me' && !li.dataset.toMe) || (f.indexOf('from:') === 0 && f.slice(5) !== from);
+  li.classList.toggle('watched', !!prefs.watch[from]);
+}
+function showFilteredNote(){
+  var items = $('log').querySelectorAll('li[data-from]'), shown = 0;
+  for (var i = 0; i < items.length; i++) if (!items[i].hidden) shown++;
+  $('log-filtered').hidden = !(items.length && !shown);
+}
+function applyFilter(){ Array.prototype.forEach.call($('log').querySelectorAll('li[data-from]'), filterItem); showFilteredNote(); }
+$('show').addEventListener('change', applyFilter);
+function selectRx(which){
+  $('tab-msgs').setAttribute('aria-selected', which === 'msgs');
+  $('tab-stations').setAttribute('aria-selected', which === 'stations');
+  $('pane-msgs').hidden = which !== 'msgs';
+  $('pane-stations').hidden = which !== 'stations';
+  $('show-wrap').hidden = which !== 'msgs';
+  if (which === 'stations') renderStations();
+}
+$('tab-msgs').addEventListener('click', function(){ selectRx('msgs'); });
+$('tab-stations').addEventListener('click', function(){ selectRx('stations'); });
+function baseCall(c){ return String(c).split('-')[0]; }
+function isToMe(dest){ var me = callsign(); return !!me && baseCall(dest) === baseCall(me); }
+function itemShell(from, note, dest){
+  var li = document.createElement('li'), me = isToMe(dest || 'SMOKE');
+  li.innerHTML = '<div class="meta"><span class="from"></span><span class="to"></span><span class="when"></span><span class="note"></span></div>';
+  li.querySelector('.from').textContent = from;
+  var to = li.querySelector('.to');
+  if (me) { to.innerHTML = '→ <b>you</b>'; li.classList.add('to-me'); }
+  else to.textContent = '→ ' + (!dest || dest === 'SMOKE' ? 'everyone' : dest);
+  li.dataset.from = from; li.dataset.toMe = me ? '1' : '';
+  if (prefs.watch[from]) li.classList.add('watched');
+  li.querySelector('.when').textContent = stamp();
+  li.querySelector('.note').textContent = note || '';
+  return li;
+}
+function receiveFrame(bytes, source, level, rate){
+  var f = Modem.parseFrame(bytes);
+  if (!f) return;
+  heard(f.src, level);
+  var ack = Modem.parseAck(f.info);
+  if (ack) { if (isToMe(f.dest)) gotAck(f.src, ack.id); return; }
+  var need = Modem.parseNeed(f.info);
+  if (need) { if (isToMe(f.dest)) gotNeed(f.src, need.id, need.count); return; }
+  var b = Modem.parseBulletin(f.info);
+  if (b) return receiveBulletinPacket(f.src, f.dest, b, source);
+  var m = Modem.parseMsg(f.info);
+  if (m && isToMe(f.dest) && source !== 'test' && !prefs.mute[f.src]) queueAck(f.src, m.id);
+  if (m) { // a resend or repeat we already showed: count it rather than show it again
+    var key = f.src + '#' + m.id, seen = seenMsgs[key];
+    if (seen) {
+      seen.dataset.heard = (+seen.dataset.heard || 1) + 1;
+      var tm = seen.querySelector('.times') || seen.querySelector('.meta').appendChild(document.createElement('span'));
+      tm.className = 'times'; tm.textContent = 'heard ×' + seen.dataset.heard;
+      return;
+    }
+  }
+  var text = Modem.readText(f.info);
+  var li = itemShell(f.src, (source === 'test' ? 'test · ' : '') + 'message' + (rate === 300 ? ' · 300 baud' : ''), f.dest);
+  var body = document.createElement('div'); body.className = 'body';
+  body.textContent = text == null ? '(' + f.info.length + ' bytes of data from other software)' : text;
+  li.appendChild(body); addItem(li); flagIfImportant(li);
+  if (m) seenMsgs[f.src + '#' + m.id] = li;
+}
+function receiveBulletinPacket(from, dest, b, source){
+  var key = from + '/' + b.id + '/' + b.k + '/' + b.length, entry = bulletins[key];
+  if (!entry) {
+    entry = bulletins[key] = { dec: new Modem.BulletinDecoder(b.id, b.k, b.length, b.compressed), li: itemShell(from, (source === 'test' ? 'test · ' : '') + 'incoming', dest),
+                               toMe: isToMe(dest), source: source, from: from, id: b.id, dest: dest, key: key };
+    if (source === 'restored') entry.li.querySelector('.note').textContent = 'picked up from earlier';
+    var body = document.createElement('div');
+    body.innerHTML = '<div class="prog"><i></i></div><div class="hint pc"></div>';
+    entry.li.appendChild(body); entry.body = body; addItem(entry.li);
+  }
+  if (entry.finished) {
+    // a resend of something we already have: say so on its entry, once per send
+    if (source !== 'test' && source !== 'restored' && Date.now() - (entry.lastAgain || entry.finishedAt || 0) > 20000) {
+      entry.lastAgain = Date.now(); entry.again = (entry.again || 0) + 1;
+      var tm = entry.li.querySelector('.times') || entry.li.querySelector('.meta').appendChild(document.createElement('span'));
+      tm.className = 'times'; tm.textContent = 'sent again' + (entry.again > 1 ? ' ×' + entry.again : '');
+    }
+    // still arriving after we have it all: the sender missed our reply, so send it again (at most every 8 s)
+    if (entry.toMe && source !== 'test' && Date.now() - (entry.ackedAt || 0) > 8000) { entry.ackedAt = Date.now(); queueAck(from, b.id); }
+    return;
+  }
+  var isNew = entry.dec.add(b.seed, b.data);
+  if (source !== 'restored') { entry.lastPacketAt = Date.now(); entry.stalled = false; if (isNew) savePartialsSoon(); }
+  var d = entry.dec;
+  entry.body.querySelector('.prog i').style.width = (100 * d.knownCount / d.k) + '%';
+  entry.body.querySelector('.pc').textContent = d.received + ' packets heard, ' + d.knownCount + ' of ' + d.k + ' blocks rebuilt. Needs about ' + (d.k - d.knownCount + 2) + ' more.';
+  var askBtn = entry.body.querySelector('.ask'); if (askBtn) askBtn.remove();
+  if (d.done()) { entry.finished = true; entry.finishedAt = Date.now(); finishBulletin(entry); }
+}
+// A transfer that has gone quiet before it was complete: if it was sent to us, ask for exactly what's missing;
+// otherwise offer a button to ask.
+setInterval(function(){
+  Object.keys(bulletins).forEach(function(key){
+    var e = bulletins[key];
+    if (e.finished || e.source === 'test' || !e.lastPacketAt || Date.now() - e.lastPacketAt < 6000) return;
+    var d = e.dec, need = d.k - d.knownCount + 3, pc = e.body.querySelector('.pc');
+    if (!e.stalled) {
+      e.stalled = true;
+      pc.textContent = (e.restored ? 'Picked up from earlier: ' + d.knownCount + ' of ' + d.k + ' blocks. A resend of this file will finish it, or ask for ' + need + ' more packets.'
+                                   : 'Stopped arriving at ' + d.knownCount + ' of ' + d.k + ' blocks. Needs about ' + need + ' more packets.');
+      if (e.toMe && $('autoack').checked && Date.now() - (e.askedAt || 0) > 15000 && queueNeed(e.from, e.id, need)) {
+        e.askedAt = Date.now(); pc.textContent += ' Asked ' + e.from + ' for them.';
+      } else if (!e.body.querySelector('.ask')) {
+        var b = document.createElement('button'); b.type = 'button'; b.className = 'ghost small ask';
+        b.textContent = 'Ask ' + e.from + ' for ' + need + ' more';
+        b.addEventListener('click', function(){
+          if (!callsign()) { pc.textContent = 'Enter your callsign to ask for more.'; return; }
+          queueNeed(e.from, e.id, e.dec.k - e.dec.knownCount + 3); e.askedAt = Date.now(); b.remove();
+          pc.textContent += ' Asked ' + e.from + ' for more.';
+        });
+        e.body.appendChild(b);
+      }
+    }
+  });
+}, 2000);
+// Half-received files are remembered on this device, so a resend later (even after a reload) can finish them.
+var partialTimer = null;
+function savePartialsSoon(){ clearTimeout(partialTimer); partialTimer = setTimeout(savePartials, 800); }
+function savePartials(){
+  var list = Object.keys(bulletins).map(function(k){ return bulletins[k]; })
+    .filter(function(e){ return !e.finished && e.source !== 'test' && e.dec.received; })
+    .sort(function(a, b){ return (b.lastPacketAt || 0) - (a.lastPacketAt || 0); }).slice(0, 10)
+    .map(function(e){ return { from: e.from, dest: e.dest, id: e.id, k: e.dec.k, length: e.dec.length, c: e.dec.compressed, at: e.lastPacketAt || Date.now(),
+                               p: e.dec.packets.map(function(x){ return [x[0], b64(x[1])]; }) }; });
+  try { store.set('partials', JSON.stringify(list)); } catch (e) {}
+}
+function loadPartials(){
+  var list = []; try { list = JSON.parse(store.get('partials') || '[]'); } catch (e) {}
+  list.reverse().forEach(function(x){
+    x.p.forEach(function(pk){ receiveBulletinPacket(x.from, x.dest, { id: x.id, k: x.k, length: x.length, compressed: x.c, seed: pk[0], data: unb64(pk[1]) }, 'restored'); });
+    var e = bulletins[x.from + '/' + x.id + '/' + x.k + '/' + x.length];
+    if (e && !e.finished) { e.lastPacketAt = x.at; e.restored = true; }
+  });
+}
+async function finishBulletin(entry){
+  var bytes = entry.dec.bytes();
+  try { if (entry.dec.compressed) bytes = await Modem.decompress(bytes); } catch (e) { entry.body.querySelector('.pc').textContent = 'Arrived but could not be unpacked.'; return; }
+  var c = Modem.unpackContent(bytes), body = entry.body;
+  var badge = document.createElement('span'); badge.className = 'done-badge'; badge.textContent = '✓ complete from ' + entry.dec.received + ' packets';
+  body.innerHTML = ''; body.appendChild(badge);
+  if (c.text != null) {
+    var t = document.createElement('div'); t.className = 'body long'; t.textContent = c.text; body.appendChild(t);
+  } else {
+    var url = URL.createObjectURL(new Blob([c.bytes], { type: c.type }));
+    if (/^image\//.test(c.type)) { var img = document.createElement('img'); img.src = url; img.alt = 'Received image ' + c.name; body.appendChild(img); }
+    var a = document.createElement('a'); a.href = url; a.download = c.name || 'file'; a.textContent = 'Save ' + (c.name || 'file') + ' (' + kb(c.bytes.length) + ')';
+    body.appendChild(document.createElement('div')).appendChild(a);
+  }
+  entry.li.querySelector('.note').textContent = entry.li.querySelector('.note').textContent.replace('incoming', c.text != null ? 'bulletin' : 'file');
+  flagIfImportant(entry.li);
+  savePartialsSoon();
+  if (entry.toMe && entry.source !== 'test' && !prefs.mute[entry.from]) { entry.ackedAt = Date.now(); queueAck(entry.from, entry.id); }
+}
+
+/* ---------- waterfall ---------- */
+var wf = $('wf'), wg = wf.getContext('2d');
+function sizeWaterfall(){
+  var r = window.devicePixelRatio || 1, w = wf.clientWidth;
+  if (!w) return;
+  wf.width = Math.round(w * r); wf.height = Math.round(wf.clientHeight * r);
+  wg.fillStyle = '#090D0C'; wg.fillRect(0, 0, wf.width, wf.height);
+}
+sizeWaterfall(); window.addEventListener('resize', debounce(sizeWaterfall, 200));
+function heat(v){ // 0..1 through deep blue, magenta and orange to near white
+  v = Math.max(0, Math.min(1, v));
+  var stops = [[9,13,12],[30,22,70],[120,28,110],[220,70,60],[255,150,50],[255,236,170]];
+  var x = v * (stops.length - 1), i = Math.min(stops.length - 2, Math.floor(x)), f = x - i, a = stops[i], b = stops[i + 1];
+  return 'rgb(' + Math.round(a[0] + (b[0] - a[0]) * f) + ',' + Math.round(a[1] + (b[1] - a[1]) * f) + ',' + Math.round(a[2] + (b[2] - a[2]) * f) + ')';
+}
+// values: strengths from 0 to 3000 Hz, each 0..1
+var HEAT = []; for (var hi = 0; hi < 64; hi++) HEAT.push(heat(hi / 63));
+function waterfallRow(raw){
+  var sorted = Array.prototype.slice.call(raw).sort(function(a, b){ return a - b; }), med = sorted[sorted.length >> 1];
+  var w = wf.width, h = wf.height, row = Math.max(1, Math.round(h / wf.clientHeight)), n = raw.length;
+  wg.drawImage(wf, 0, 0, w, h - row, 0, row, w, h - row);
+  for (var x = 0; x < n; x++) {
+    var v = Math.max(0, Math.min(1, 0.08 + (raw[x] - med) * 3.2));
+    wg.fillStyle = HEAT[Math.round(v * 63)];
+    var x0 = Math.floor(x / n * w), x1 = Math.floor((x + 1) / n * w);
+    wg.fillRect(x0, 0, x1 - x0, row);
+  }
+  wg.fillStyle = 'rgba(255,255,255,.22)';
+  [1200, 2200].forEach(function(f){ wg.fillRect(Math.round(f / 3000 * w), 0, 1, row); });
+}
+// Strength of 96 frequencies (0–3000 Hz) in a block of samples, for the test's waterfall.
+function spectrum(samples, fs){
+  var n = samples.length, out = new Float32Array(96);
+  for (var b = 0; b < 96; b++) {
+    var f = (b + 0.5) / 96 * 3000, w = 2 * Math.PI * f / fs, c = 2 * Math.cos(w), s1 = 0, s2 = 0;
+    for (var i = 0; i < n; i++) { var s0 = samples[i] * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / n)) + c * s1 - s2; s2 = s1; s1 = s0; }
+    var p = s1 * s1 + s2 * s2 - c * s1 * s2;
+    out[b] = Math.max(0, (10 * Math.log10(p / n + 1e-9) + 30) / 45);
+  }
+  return out;
+}
+
+/* ---------- listening to the microphone ---------- */
+var listening = null;
+// Captures microphone samples on the browser's audio thread (an AudioWorklet) and passes them over in order,
+// so a busy page can delay decoding a little but never loses audio. Older browsers fall back to ScriptProcessor.
+var TAP_CODE = "class Tap extends AudioWorkletProcessor{constructor(){super();this.b=new Float32Array(2048);this.n=0}" +
+  "process(i){var c=i[0]&&i[0][0];if(c){for(var k=0;k<c.length;k++){this.b[this.n++]=c[k];if(this.n===2048){this.port.postMessage(this.b,[this.b.buffer]);this.b=new Float32Array(2048);this.n=0}}}return true}}" +
+  "registerProcessor('smoke-tap',Tap);";
+var tapLoaded = null;
+async function micTap(a, src, onSamples){
+  if (a.audioWorklet && window.AudioWorkletNode) {
+    try {
+      // A page opened from a file can't load worklets from blob: URLs, so try a data: URL first, then a blob.
+      if (!tapLoaded) tapLoaded = a.audioWorklet.addModule('data:text/javascript;charset=utf-8,' + encodeURIComponent(TAP_CODE))
+        .catch(function(){ return a.audioWorklet.addModule(URL.createObjectURL(new Blob([TAP_CODE], { type: 'text/javascript' }))); });
+      await tapLoaded;
+      var node = new AudioWorkletNode(a, 'smoke-tap', { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1 });
+      node.port.onmessage = function(e){ onSamples(e.data); };
+      src.connect(node);
+      node.kind = 'worklet';
+      return node;
+    } catch (e) { console.warn('Audio worklet unavailable, using ScriptProcessor', e); }
+  }
+  var proc = a.createScriptProcessor(4096, 1, 1);
+  proc.onaudioprocess = function(e){ onSamples(new Float32Array(e.inputBuffer.getChannelData(0))); };
+  src.connect(proc);
+  proc.kind = 'script';
+  return proc;
+}
+$('wf-start').addEventListener('click', function(){ $('listen').click(); });
+$('listen').addEventListener('click', async function(){
+  if (listening) return stopListening();
+  try {
+    var a = audio();
+    var stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+    var src = a.createMediaStreamSource(stream);
+    var heardCount = 0;
+    var demod = new Modem.Demodulator(a.sampleRate, function(f, b){ heardCount++; try { receiveFrame(f, 'air', demod.level, b); } catch (err) { console.error(err); } }, { bauds: [1200, 300] });
+    var an = a.createAnalyser(), mute = a.createGain();
+    mute.gain.value = 0; an.fftSize = 2048; an.smoothingTimeConstant = 0.2;
+    var tap = await micTap(a, src, function(samples){ demod.process(samples); });
+    tap.connect(mute); mute.connect(a.destination); src.connect(an);
+    // The display updates about 20 times a second; the decoding itself never waits for it.
+    var bins = new Float32Array(an.frequencyBinCount), top = Math.floor(3000 / (a.sampleRate / 2) * bins.length), raf, lastDraw = 0, lastStatus = '';
+    (function draw(now){
+      raf = requestAnimationFrame(draw);
+      if (now - lastDraw < 50) return;
+      lastDraw = now;
+      an.getFloatFrequencyData(bins);
+      var vals = new Float32Array(96);
+      for (var i = 0; i < 96; i++) vals[i] = Math.max(0, (bins[Math.floor(i / 96 * top)] + 100) / 70);
+      waterfallRow(vals);
+      $('meter').style.width = Math.min(100, demod.level * 140) + '%';
+      $('ind-rx').classList.toggle('busy', demod.busy());
+      var dmg = demod.damaged;
+      var text = 'Listening at ' + (a.sampleRate / 1000) + ' kHz. ' + heardCount + (heardCount === 1 ? ' packet' : ' packets') + ' decoded' +
+        (dmg ? ', ' + dmg + ' heard but too damaged to read' : '') + '.' + (demod.busy() ? ' Someone is sending.' : '') +
+        (dmg >= 3 && dmg > heardCount ? ' Tip: lots of damage usually means echo or the wrong volume. Through a speaker and microphone, switch the sending side to 300 baud; otherwise try a different volume.' : '');
+      if (text !== lastStatus) { lastStatus = text; $('listen-status').textContent = text; }
+    })(0);
+    listening = { demod: demod, stop: function(){ cancelAnimationFrame(raf); tap.disconnect(); src.disconnect(); stream.getTracks().forEach(function(t){ t.stop(); }); } };
+    $('listen').querySelector('.lbl').textContent = 'Stop listening'; $('listen').setAttribute('aria-pressed', 'true'); $('listen').classList.add('on'); $('ind-rx').classList.add('on');
+    $('wf-idle').hidden = true; $('listen-chip').textContent = (a.sampleRate / 1000) + ' kHz'; $('listen-chip').classList.add('live');
+  } catch (e) {
+    $('listen-status').textContent = 'Couldn\'t use the microphone: ' + (e.name === 'NotAllowedError' ? 'permission was refused.' : e.message);
+  }
+});
+function stopListening(){
+  listening.stop(); listening = null;
+  $('listen').querySelector('.lbl').textContent = 'Listen'; $('listen').setAttribute('aria-pressed', 'false'); $('meter').style.width = '0';
+  $('listen').classList.remove('on'); $('ind-rx').classList.remove('on', 'busy');
+  $('wf-idle').hidden = false; $('listen-chip').textContent = 'Off'; $('listen-chip').classList.remove('live');
+  $('listen-status').textContent = 'Not listening.';
+}
+
+/* ---------- test without a radio ---------- */
+function gaussian(){ return Math.sqrt(-2 * Math.log(Math.random() || 1e-12)) * Math.cos(2 * Math.PI * Math.random()); }
+$('selftest').addEventListener('click', async function(){
+  if (!plan) return;
+  var btn = this; btn.disabled = true; testing = true;
+  var fs = 48000, snr = +$('snr').value, loss = +$('loss').value / 100;
+  var tItem = makeItem(plan, callsign() || 'N0CALL', toCall());
+  var frames = itemFrames(tItem, plan.single ? 1 : plan.first), lost = 0, decoded = 0;
+  var demod = new Modem.Demodulator(fs, function(f, b){ decoded++; receiveFrame(f, 'test', demod.level, b); }, { bauds: [1200, 300] });
+  var sigma = Math.sqrt(0.125 / Math.pow(10, snr / 10)); // signal power of a 0.5 sine is 0.125
+  var t0 = performance.now();
+  for (var i = 0; i < frames.length; i++) {
+    var audioOut = Modem.modulate([frames[i]], { sampleRate: fs, txDelayMs: 150, baud: baud() });
+    if (Math.random() < loss) { lost++; for (var j = 0; j < audioOut.length; j++) audioOut[j] = 0; }
+    for (j = 0; j < audioOut.length; j++) audioOut[j] += sigma * gaussian();
+    for (j = 0; j + 1024 <= audioOut.length; j += 1024) {
+      var chunk = audioOut.subarray(j, j + 1024);
+      demod.process(chunk);
+      if ((j / 1024) % 3 === 0) waterfallRow(spectrum(chunk, fs));
+    }
+    demod.process(audioOut.subarray(j));
+    $('test-stats').textContent = 'Sending ' + (i + 1) + ' of ' + frames.length + '…';
+    await wait(0);
+  }
+  demod.process(new Float32Array(fs / 10));
+  $('test-stats').textContent = 'Sent ' + frames.length + (frames.length === 1 ? ' packet' : ' packets') + ' through ' + snr + ' dB of hiss. ' + lost + ' lost on the way, ' +
+    decoded + ' decoded' + (demod.damaged ? ', ' + demod.damaged + ' damaged' : '') + '. Decoding took ' + ((performance.now() - t0) / 1000).toFixed(1) + ' s for ' +
+    secs(frames.reduce(function(s, f){ return s + Modem.airtime([f.length], 150, baud()); }, 0)) + ' of audio.';
+  btn.disabled = false; testing = false;
+});
+
+// The "test without a radio" panel is for development: open the page with #test or ?test to show it.
+// With the test flag, tests can feed in packets from other stations and pretend a channel is busy.
+if (/(^|[?&#])test\b/.test(location.search + location.hash)) {
+  window.smokeTest = {
+    frame: function(bytes, level){ receiveFrame(bytes, 'air', level == null ? 0.5 : level); },
+    channel: function(busy){ listening = busy == null ? null : { demod: { busy: function(){ return busy(); } }, stop: function(){} }; },
+    onTransmit: function(fn){ testTx = fn; },
+    timing: function(retryMs, maxTries, ackGap, gap){ RETRY_BASE = retryMs; MAX_TRIES = maxTries; ACK_GAP = ackGap; GAP = gap; },
+    queue: function(){ return queue.map(function(q){ return { to: q.to, status: q.status, tries: q.tries, packets: q.packets, ackedBy: q.ackedBy || null, id: q.id, k: q.k || 0 }; }); },
+    transfers: function(){ return Object.keys(bulletins).map(function(k){ var e = bulletins[k]; return { from: e.from, id: e.id, have: e.dec.knownCount, k: e.dec.k, done: !!e.finished }; }); }
+  };
+}
+function showTestPanel(){ $('test-panel').hidden = !/(^|[?&#])test\b/.test(location.search + location.hash); }
+window.addEventListener('hashchange', showTestPanel);
+showTestPanel();
+showCallBadge();
+loadSent();
+loadPartials();
+updatePlan();
+})();
+</script>
+</body>
+</html>
