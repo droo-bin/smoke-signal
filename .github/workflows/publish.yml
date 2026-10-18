@@ -1,0 +1,128 @@
+name: Build and publish
+
+# Every push and pull request: build, then run the modem tests (including Direwolf interop) and the browser tests.
+# Pushes to main: publish the page to GitHub Pages.
+# Tags like v1.0.0: also create a GitHub release with the single offline file attached.
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Direwolf, pinned, for the interop tests: it must decode our packets, and we must match it on its own benchmark.
+  DIREWOLF_COMMIT: eda1383f5fa9d8ba3cb27f99db1d2c79494404c9
+  DIREWOLF_BIN: ${{ github.workspace }}/direwolf/build/src
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Restore Direwolf
+        id: direwolf-cache
+        uses: actions/cache@v4
+        with:
+          path: direwolf/build/src
+          key: direwolf-${{ env.DIREWOLF_COMMIT }}-${{ runner.os }}
+
+      - name: Build Direwolf's test tools
+        if: steps.direwolf-cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake libasound2-dev
+          git clone https://github.com/wb2osz/direwolf.git direwolf
+          git -C direwolf checkout "$DIREWOLF_COMMIT"
+          cmake -S direwolf -B direwolf/build
+          make -C direwolf/build -j"$(nproc)" atest gen_packets
+
+      - name: Install browser test tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Build
+        run: python build.py
+
+      - name: Modem tests (framing, decoding, bulletins, Direwolf interop)
+        run: |
+          test -x "$DIREWOLF_BIN/atest"
+          node --test test/modem.test.js
+
+      - name: Browser tests (layout, two stations, microphone with room echo)
+        run: python -m unittest discover -s test -p "test_*.py" -v
+
+      - name: Prepare site
+        run: |
+          mkdir -p site
+          cp dist/smoke-signal.html site/index.html
+          cp dist/smoke-signal.html site/smoke-signal.html
+
+      - name: Upload offline file
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-signal-offline
+          path: dist/smoke-signal.html
+
+      - name: Upload Pages site
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: Publish to GitHub Pages
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  release:
+    name: Attach offline file to release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: smoke-signal-offline
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha256sum smoke-signal.html > smoke-signal.html.sha256
+          gh release create "$GITHUB_REF_NAME" smoke-signal.html smoke-signal.html.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Smoke Signal $GITHUB_REF_NAME" \
+            --notes "Download smoke-signal.html and open it in any browser. It works offline, so keep a copy on each device you might need it on. The .sha256 file lets you check the download is genuine."
